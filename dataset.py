@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 
 max_age = 110
-class AgeGenderDataset(Dataset):
+class utkface(Dataset):
      def __init__(self, root_dir):
          self.transform = transforms.Compose([transforms.ToTensor()])
          img_files = os.listdir(root_dir)
@@ -48,10 +48,10 @@ class AgeGenderDataset(Dataset):
          # rescale
          img = cv.resize(img, (64, 64))
          img = (np.float32(img) /255.0 - 0.5) / 0.5
-         # H, W C to C, H, W
+         # H, W, C to C, H, W
          img = img.transpose((2, 0, 1))
          sample = {'image': torch.from_numpy(img), 'age': self.ages[idx], 'gender': self.genders[idx]}
          return sample
 
 if __name__ == '__main__':
-    ds = AgeGenderDataset("dataset\\UTKFace")
+    ds = utkface("dataset/UTKFace")
