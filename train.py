@@ -18,7 +18,7 @@ def main():
     torch.backends.cudnn.benchmark = True
 
     # train_on_gpu = True
-    batch_size = 16
+    batch_size = 64
 
 
     # runtime
@@ -63,11 +63,17 @@ def main():
 
     net = MultiPredictNet(init_weight=True)
     net.to(device)
+
+    # Parallel
+    if (device.type == 'cuda') and (torch.cuda.device_count() > 1):
+        net = nn.DataParallel(net)
+
+
     # 训练模型的次数
     # epoch_num = 25
-    epoch_num = 3
-    #optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
-    optimizer = optim.Adam(net.parameters(), lr=1e-2)
+    epoch_num = 50
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.001)
+    # optimizer = optim.Adam(net.parameters(), lr=1e-2)
     # 损失函数
     mse_loss = torch.nn.MSELoss()
     cross_loss = torch.nn.CrossEntropyLoss()
@@ -119,6 +125,8 @@ def main():
         acc_gender = 0.0       # accumulate accurate sum/epoch
         loss_age = 0.0
         val_loss = 0.0
+        best_val_loss = 10000000
+        best_acc = 0.0
         with torch.no_grad():
             val_bar = tqdm(val_loader, file=sys.stdout)
             for j, val_set in enumerate(val_bar):
@@ -147,14 +155,20 @@ def main():
 
         # acc_gender /= val_num
 
+        if val_loss < best_val_loss:
+            torch.save(net.state_dict(), 'age_gender_model.pth')
+            best_val_loss = val_loss
+            best_acc = acc_gender/val_num
+
         print("[epoch %d] train_loss: %.3f  val_loss: %.3f" %
                 (epoch + 1, train_loss / i, val_loss / j))
         print("[epoch %d] gender_acc: %.3f  mse_age: %.3f" %
                 (epoch + 1, acc_gender/val_num, loss_age/val_num))
-    
+
+    print("best val_loss: %.3f best acc_gender: %.3f" % (best_val_loss/j, best_acc))
     
     # save model
-    torch.save(net.state_dict(), 'age_gender_model.pth')
+    
 
 if __name__ == "__main__":
     main()

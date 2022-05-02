@@ -1,63 +1,68 @@
-### 还没改好
+from ctypes import sizeof
+import os
 
 import torch
-import cv2 as cv
+import torch.nn as nn
 import numpy as np
 
-def video_landmark_demo():
-    cnn_model = torch.load("./age_gender_model.pth")
-    print(cnn_model)
-    # capture = cv.VideoCapture(0)
-    capture = cv.VideoCapture("D:/images/video/example_dsh.mp4")
+from PIL import Image
+import matplotlib.pyplot as plt
+# from PIL import Image
+import cv2 as cv
 
-    # load tensorflow model
-    net = cv.dnn.readNetFromTensorflow(model_bin, config=config_text)
-    while True:
-        ret, frame = capture.read()
-        if ret is not True:
-            break
-        frame = cv.flip(frame, 1)
-        h, w, c = frame.shape
-        blobImage = cv.dnn.blobFromImage(frame, 1.0, (300, 300), (104.0, 177.0, 123.0), False, False)
-        net.setInput(blobImage)
-        cvOut = net.forward()
-        # 绘制检测矩形
-        for detection in cvOut[0,0,:,:]:
-            score = float(detection[2])
-            if score > 0.5:
-                left = detection[3]*w
-                top = detection[4]*h
-                right = detection[5]*w
-                bottom = detection[6]*h
+from model import MultiPredictNet
 
-                # roi and detect landmark
-                roi = frame[np.int32(top):np.int32(bottom),np.int32(left):np.int32(right),:]
-                rw = right - left
-                rh = bottom - top
-                img = cv.resize(roi, (64, 64))
-                img = (np.float32(img) / 255.0 - 0.5) / 0.5
-                img = img.transpose((2, 0, 1))
-                x_input = torch.from_numpy(img).view(1, 3, 64, 64)
-                age_, gender_ = cnn_model(x_input.cuda())
-                predict_gender = torch.max(gender_, 1)[1].cpu().detach().numpy()[0]
-                gender = "Male"
-                if predict_gender == 1:
-                    gender = "Female"
-                predict_age = age_.cpu().detach().numpy()*116.0
-                print(predict_gender, predict_age)
+def main():
+    max_age = 110
 
-                # 绘制
-                cv.putText(frame, ("gender: %s, age:%d"%(gender, int(predict_age[0][0]))), (int(left), int(top)-15), cv.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 1)
-                cv.rectangle(frame, (int(left), int(top)), (int(right), int(bottom)), (255, 0, 0), thickness=2)
-               # cv.putText(frame, "score:%.2f"%score, (int(left), int(top)), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                c = cv.waitKey(10)
-                if c == 27:
-                    break
-                cv.imshow("face detection + landmark", frame)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # load image 
+    img_path = "./dataset/UTKFace/70_0_0_20170117091026248.jpg.chip.jpg"
+    assert os.path.exists(img_path), "file '{}' does not exist.".format(img_path)
+    # img = Image.open(img_path)
+    img = cv.imread(img_path)
+   
+    # img = cv.cvtColor(np.asarray(img), cv.COLOR_RGB2BGR)
+    # plt.imshow(img)
+
+    ## view the example img
+    cv.imshow("image", img)
 
     cv.waitKey(0)
-    cv.destroyAllWindows()
+    cv.destoryAllWindows()
+    img = cv.resize(img, (64, 64))
+    img = (np.float32(img) /255.0 - 0.5) / 0.5
+    # H, W, C to C, H, W
+    img = img.transpose((2, 0, 1))
+    # print(img.shape)
 
+    # [N, C, H, W]
+    # expand batch dimension
+    # img = cv.resize(img, (64, 64))
+    # img = (np.float32(img) /255.0 - 0.5) / 0.5
+    # H, W, C to C, H, W
+    # img = img.transpose((2, 0, 1))
+    img_in = torch.from_numpy(img)
+    img_in = torch.unsqueeze(img_in, dim=0)
+    # print(img_in.shape)
+    
+    weight_path = "age_gender_model.pth"
+    assert os.path.exists(weight_path), "file '{}' does not exist.".format(weight_path)
+    net = MultiPredictNet().to(device)
+    net.load_state_dict(torch.load(weight_path))
+
+    # predict
+    net.eval()
+    with torch.no_grad():
+        # predict class
+        out_age_raw, out_gender_raw = net(img_in.to(device))[0].cpu(), net(img_in.to(device))[1].cpu() 
+        # print(net(img_in.to(device)))
+        out_age = torch.squeeze(out_age_raw).cpu() * max_age
+        out_gender = torch.squeeze(out_gender_raw).cpu()
+        pred_gender = torch.softmax(out_gender, dim=0)
+        predict_gender = torch.argmax(pred_gender).numpy()
+        print(int(out_age), predict_gender)
 
 if __name__ == "__main__":
-    video_landmark_demo()
+    main()
